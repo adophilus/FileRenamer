@@ -31,9 +31,9 @@ class FileRenamer ():
 	def check_match_criteria (self, file_name):
 		return bool(self.match_criteria.search(file_name))
 
-	def check_season_match_criteria (self, file_name):
-		if not self.season_match_criteria.pattern: return True
-		return bool(self.season_match_criteria.search(file_name))
+	def check_season_match_criteria(self, file_name):
+		return (bool(self.season_match_criteria.search(file_name))
+		        if self.season_match_criteria.pattern else True)
 
 	def check_episode_match_criteria (self, file_name):
 		return bool(self.episode_match_criteria.search(file_name))
@@ -41,7 +41,7 @@ class FileRenamer ():
 	def is_match_season_enabled (self):
 		return (self.season_match_criteria.pattern == True)
 
-	def get_season_number (self, file_name):
+	def get_season_number(self, file_name):
 		match = self.season_match_criteria.search(file_name)
 		if not match:
 			return False
@@ -49,8 +49,7 @@ class FileRenamer ():
 		# print(season_number_match)
 		if not season_number_match:
 			return False
-		season_number = season_number_match.group()
-		if season_number:
+		if season_number := season_number_match.group():
 			if self.strip_preceding_zeros:
 				season_number = re.compile("^0+").sub("", season_number)
 			if len(season_number) < self.season_max_length:
@@ -59,15 +58,14 @@ class FileRenamer ():
 				season_number = self.fill_season_number(filler, season_number)
 			return season_number
 
-	def get_episode_number (self, file_name):
+	def get_episode_number(self, file_name):
 		match = self.episode_match_criteria.search(file_name)
 		if not match:
 			return False
 		episode_number_match = re.compile("\\d+").search(match.group())
 		if not episode_number_match:
 			return False
-		episode_number = episode_number_match.group()
-		if episode_number:
+		if episode_number := episode_number_match.group():
 			if self.strip_preceding_zeros:
 				episode_number = re.compile("^0+").sub("", episode_number)
 			if len(episode_number) < self.episode_max_length:
@@ -82,65 +80,61 @@ class FileRenamer ():
 	def fill_season_number (self, fill, season_number):
 		return f"{fill}{season_number}"
 
-	def get_crude_match (self, file_name):
-		st = []
-		st.append(file_name)
-		st.append(self.check_match_criteria(file_name))
+	def get_crude_match(self, file_name):
+		st = [file_name, self.check_match_criteria(file_name)]
 		st.append(self.check_season_match_criteria(file_name))
 		st.append(self.check_episode_match_criteria(file_name))
 		return st
 
-	def get_processed_match (self, file_name, match_criteria, match_season_criteria, match_episode_criteria):
+	def get_processed_match(self, file_name, match_criteria, match_season_criteria, match_episode_criteria):
 		if not match_criteria:
 			return
 		season_number = self.get_season_number(file_name)
 		episode_number = self.get_episode_number(file_name)
 		if not (episode_number):
 			return
-		st = []
-		st.append(file_name)
-		st.append(season_number)
-		st.append(episode_number)
-		return st
+		return [file_name, season_number, episode_number]
 
-	def refine_processed_list (self, processed_list):
+	def refine_processed_list(self, processed_list):
 		# The following lines would remove any useless data from the refined list
 		count = processed_list.count(None)
-		for num in range(0, count):
+		for _ in range(count):
 			processed_list.remove(None)
 		return processed_list
 
-	def __get_renaming_list (self, file_name, season_number, episode_number):
+	def __get_renaming_list(self, file_name, season_number, episode_number):
 		original_extension = re.compile("^\\.+").sub("", file_name).split(".")
 		original_extension = ".".join(original_extension[1:])
-		st = []
-		st.append(file_name)
-		st.append(self.renaming_system.format(
-			match_criteria = self.match_criteria,
-			season_prefix = self.season_prefix,
-			season_number = season_number,
-			episode_prefix = self.episode_prefix,
-			episode_number = episode_number,
-			renaming_extension = self.renaming_extension.format(
-				original_extension = original_extension
-			),
-			original_extension = original_extension
-		))
-		return st
+		return [
+		    file_name,
+		    self.renaming_system.format(
+		        match_criteria=self.match_criteria,
+		        season_prefix=self.season_prefix,
+		        season_number=season_number,
+		        episode_prefix=self.episode_prefix,
+		        episode_number=episode_number,
+		        renaming_extension=self.renaming_extension.format(
+		            original_extension=original_extension),
+		        original_extension=original_extension,
+		    ),
+		]
 
-	def get_renaming_list (self):
+	def get_renaming_list(self):
 		if not (self.check_path()):
 			return [False, self.messages["error"]["INVALID_PATH"]]
 
 		list_of_files = os.listdir(self.path)
-		matching_files = {}
-		matching_files["crude"] = [self.get_crude_match(file_name) for file_name in list_of_files] # [file_name, match_criteria?, match_season_criteria?, match_episode_criteria?]
+		matching_files = {
+		    "crude": [self.get_crude_match(file_name) for file_name in list_of_files]
+		}
 		matching_files["processed"] = [self.get_processed_match(file_name, match_criteria, match_season_criteria, match_episode_criteria) for file_name, match_criteria, match_season_criteria, match_episode_criteria in matching_files["crude"]]
 		matching_files["refined"] = self.refine_processed_list(matching_files["processed"])
-		
+
 		[print(record) for record in matching_files["crude"]]
-		renaming_list = [self.__get_renaming_list(file_name, season_number, episode_number) for file_name, season_number, episode_number in matching_files["refined"]]
-		return renaming_list
+		return [
+		    self.__get_renaming_list(file_name, season_number, episode_number)
+		    for file_name, season_number, episode_number in matching_files["refined"]
+		]
 
 	def rename_files_with_list (self, renaming_list, destination_path = "{path}", rename = True):
 		destination_path = destination_path.format(path = self.path)
